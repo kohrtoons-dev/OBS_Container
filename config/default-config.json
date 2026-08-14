@@ -41,7 +41,7 @@
     "chatTitle": "LIVE CHAT",
     "marketLabel": "MARKET UPDATE",
     "chatUrl": "",
-    "clock": { "show": false, "format24": true, "seconds": false, "showDate": false, "timezone": "local" },
+    "clock": { "show": false, "format24": true, "seconds": true, "showDate": false, "timezone": "America/New_York" },
     "socials": [
       { "type": "discord", "label": "PropTraderEdge" },
       { "type": "youtube", "label": "@PropTraderEdge" },

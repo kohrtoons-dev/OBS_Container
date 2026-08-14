@@ -516,7 +516,7 @@
       liveData: { enabled:true, provider:"binance", apiKey:"", apiSecret:"", intervalSec:60, tickerSpeed:1, tickerDir:"left", tickerStyle:"classic",
         symbols:[{symbol:"BTCUSDT",label:"BTC"},{symbol:"ETHUSDT",label:"ETH"},{symbol:"SOLUSDT",label:"SOL"},{symbol:"XRPUSDT",label:"XRP"},{symbol:"BNBUSDT",label:"BNB"}],
         fields:{ price:true, changePct:true, changeAbs:false, name:false, arrow:true, highlow:false, volume:false } },
-      clock: { show: false, format24: true, seconds: false, showDate: false, timezone: "local" },
+      clock: { show: false, format24: true, seconds: true, showDate: false, timezone: "America/New_York" },
       socials: [
         { type: "discord", label: "PropTraderEdge" }, { type: "youtube", label: "@PropTraderEdge" },
         { type: "instagram", label: "@proptraderedge" }, { type: "facebook", label: "Prop Trader Edge" }
@@ -1248,6 +1248,7 @@
       if(cf.timezone&&cf.timezone!=="local")opt.timeZone=cf.timezone;
       var ts;
       try{ts=now.toLocaleTimeString([],opt);}catch(e){ts=now.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:!cf.format24});}
+      if(cf.timezone==="America/New_York")ts+=" ET";
       if(d._t.textContent!==ts)d._t.textContent=ts;
       if(cf.showDate){var ds; try{ds=now.toLocaleDateString([],{weekday:"short",month:"short",day:"numeric",timeZone:cf.timezone!=="local"?cf.timezone:undefined});}catch(e){ds=now.toLocaleDateString();} if(d._d.textContent!==ds)d._d.textContent=ds;}
     }
@@ -2109,7 +2110,7 @@
       liveData: { enabled:true, provider:"binance", apiKey:"", apiSecret:"", intervalSec:60, tickerSpeed:1, tickerDir:"left", tickerStyle:"classic",
         symbols:[{symbol:"BTCUSDT",label:"BTC"},{symbol:"ETHUSDT",label:"ETH"},{symbol:"SOLUSDT",label:"SOL"},{symbol:"XRPUSDT",label:"XRP"},{symbol:"BNBUSDT",label:"BNB"}],
         fields:{ price:true, changePct:true, changeAbs:false, name:false, arrow:true, highlow:false, volume:false } },
-      clock: { show: false, format24: true, seconds: false, showDate: false, timezone: "local" },
+      clock: { show: false, format24: true, seconds: true, showDate: false, timezone: "America/New_York" },
       socials: [
         { type: "discord", label: "PropTraderEdge" }, { type: "youtube", label: "@PropTraderEdge" },
         { type: "instagram", label: "@proptraderedge" }, { type: "facebook", label: "Prop Trader Edge" }
@@ -2889,12 +2890,13 @@
       c.appendChild(httpUrlRow("marketbar"));
       return c;}
     function cardClock(){var c=card("Clock");
-      c.appendChild(row(null,toggle("Show the clock (pill at the end of the Market Update Bar)","content.clock.show")));
+      c.appendChild(row(null,easternMarketClockToggle()));
       c.appendChild(row("Format",selectEl("content.clock.format24",[{v:false,t:"12-hour"},{v:true,t:"24-hour"}])));
       var tzList=["local","America/New_York","America/Chicago","America/Los_Angeles","America/Toronto","Europe/London","Europe/Berlin","Europe/Paris","Asia/Dubai","Asia/Kolkata","Asia/Singapore","Asia/Tokyo","Australia/Sydney","UTC"];
-      c.appendChild(row("Timezone",selectEl("content.clock.timezone",tzList.map(function(t){return{v:t,t:t==="local"?"Local (browser)":t};}))));
+      c.appendChild(row("Timezone",selectEl("content.clock.timezone",tzList.map(function(t){return{v:t,t:t==="local"?"Local (browser)":(t==="America/New_York"?"Eastern Time (ET)":t)};}))));
       var sw=el("div","row");sw.appendChild(toggle("Show seconds","content.clock.seconds"));c.appendChild(sw);
       var sw2=el("div","row");sw2.appendChild(toggle("Show date","content.clock.showDate"));c.appendChild(sw2);
+      c.appendChild(el("p","mini","The Elements shortcut switches this clock to Eastern Time with seconds. Changes here update that same clock; it always stays attached to the right side of the Market Update Bar."));
       // fix boolean value type for format select
       return c;}
 
@@ -2984,7 +2986,7 @@
 
     function boxList(){
       var wrap=el("div");
-      Object.keys(PG.BOX_META).filter(function(key){return key!=="ticker"&&key!=="marketbar";}).forEach(function(key){
+      Object.keys(PG.BOX_META).forEach(function(key){
         wrap.appendChild(boxRow(key));
       });
       return wrap;}
@@ -3168,6 +3170,35 @@
       return box;
     }
 
+    function optionToggleGrid(labelText,pathPrefix,options){
+      var r=el("div","row");r.style.gridColumn="1/-1";
+      r.appendChild(el("label","lbl",labelText));
+      var grid=el("div");grid.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:6px";
+      options.forEach(function(p){grid.appendChild(toggle(p[1],pathPrefix+p[0]));});
+      r.appendChild(grid);return r;
+    }
+
+    /* The quick Elements switch is intentionally opinionated: turning it on
+       recreates the original right-hand clock pill in Eastern Time with seconds.
+       The Market tab remains the advanced editor and uses these exact same paths. */
+    function easternMarketClockToggle(){
+      var w=el("label","sw"), i=el("input"), tr=el("span","track");
+      i.type="checkbox";i.checked=!!get("content.clock.show");
+      w.appendChild(i);w.appendChild(tr);w.appendChild(document.createTextNode("Show Eastern clock on the right"));
+      i.addEventListener("change",function(){
+        PG.set(function(){
+          S.content.clock.show=i.checked;
+          if(i.checked){
+            S.content.clock.timezone="America/New_York";
+            S.content.clock.seconds=true;
+            S.content.clock.showDate=false;
+          }
+        });
+      });
+      i._path="content.clock.show";i._chk=true;regField(i);
+      return w;
+    }
+
     var BOX_CONTENT={
       topbar:function(){return [
         wide(row("Sponsor shown in the main-sponsor card",sponsorSelect("content.topSponsor"))),
@@ -3183,6 +3214,35 @@
       cameraFrame:function(){return [
         wide(row("LIVE pill text (blank = hidden)",textInput("content.liveLabel","LIVE"))),
         noteRow("A rounded rule for your webcam source \u2014 transparent inside. Drag it over your camera in the preview.")
+      ];},
+      ticker:function(){return [
+        row("Theme",selectEl("content.liveData.tickerStyle",[
+          {v:"classic",t:"Classic \u2014 bold broadcast"},{v:"minimal",t:"Minimal \u2014 lighter weights"},
+          {v:"led",t:"LED \u2014 monospace glow"},{v:"glass",t:"Glass \u2014 pill chips"}
+        ])),
+        rangeRow("Rolling speed","content.liveData.tickerSpeed",0,3,0.5,"\u00d7"),
+        row("Direction",selectEl("content.liveData.tickerDir",[
+          {v:"left",t:"\u25c0 Scroll left"},{v:"right",t:"Scroll right \u25b6"}
+        ])),
+        optionToggleGrid("Show per symbol","content.liveData.fields.",[
+          ["price","Price"],["changePct","% change"],["changeAbs","Absolute change"],
+          ["name","Name"],["arrow","Arrow + color"],["highlow","Day high / low"],["volume","Volume"]
+        ]),
+        noteRow("Provider, symbols and refresh settings remain under Market. These controls edit the same ticker settings, so changes stay synchronized between tabs.")
+      ];},
+      marketbar:function(){return [
+        wide(row("Label chip",textInput("content.marketLabel","MARKET UPDATE"))),
+        optionToggleGrid("Include in the status crawl","content.marketBar.",[
+          ["segMovers","Top gainer / loser"],["segBreadth","Advancing vs declining"],
+          ["segSession","US market session"],["segUpdated","Last-updated time"],
+          ["segNews","News headlines"]
+        ]),
+        rangeRow("Rolling speed","content.marketBar.speed",0,3,0.5,"\u00d7"),
+        row("Direction",selectEl("content.marketBar.dir",[
+          {v:"left",t:"\u25c0 Scroll left"},{v:"right",t:"Scroll right \u25b6"}
+        ])),
+        wide(row(null,easternMarketClockToggle())),
+        noteRow("The clock sits inside the status bar at the far right as HH:MM:SS ET, matching the original design. Advanced clock formatting remains under Market \u2192 Clock; both tabs use the same settings.")
       ];},
       affiliate:function(){return [
         wide(row("Sponsor filling the side panel",sponsorSelect("content.sideSponsor"))),
