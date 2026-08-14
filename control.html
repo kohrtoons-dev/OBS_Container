@@ -268,7 +268,7 @@
   .cardwrap.badged{padding-top:25px}
   .card{position:relative;flex:1;min-width:0;height:100%;border-radius:22px;overflow:visible;
         background:linear-gradient(158deg,#202020 0%,#141414 46%,#0d0d0d 100%);
-        border:1px solid var(--border);
+        border:3px solid var(--border);
         box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 12px 34px rgba(0,0,0,.55)}
   .card.plain{background:transparent;border:0;box-shadow:none;overflow:visible}
   .card.flat{background:#050505}
@@ -309,7 +309,7 @@
   .clk .d{display:block;font-size:.5em;font-weight:600;color:var(--steel);letter-spacing:.12em}
 
   /* ---- content + camera frames ---- */
-  .frame{position:absolute;inset:0;border:1px solid var(--border);border-radius:22px;pointer-events:none;
+  .frame{position:absolute;inset:0;border:3px solid var(--border);border-radius:22px;pointer-events:none;
          box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 12px 34px rgba(0,0,0,.5)}
   .frame.glow{box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 60px rgba(246,199,51,.05),0 12px 34px rgba(0,0,0,.5)}
   .livepill{position:absolute;top:20px;right:20px;z-index:6;display:flex;align-items:center;gap:9px;
@@ -338,7 +338,7 @@
   .box[data-tstyle="led"] .tick,.box[data-tstyle="led"] .tick .sym,.box[data-tstyle="led"] .tick .px,.box[data-tstyle="led"] .tick .ch{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace}
   .box[data-tstyle="led"] .tick .sym{letter-spacing:.08em}
   .box[data-tstyle="led"] .tick .px,.box[data-tstyle="led"] .tick .ch{text-shadow:0 0 10px currentColor}
-  .box[data-tstyle="glass"] .tick{background:rgba(255,255,255,.06);border:1px solid rgba(246,199,51,.22);border-radius:999px;padding:9px 22px}
+  .box[data-tstyle="glass"] .tick{background:rgba(255,255,255,.06);border:3px solid rgba(246,199,51,.22);border-radius:999px;padding:9px 22px}
   .box[data-tstyle="glass"] .tick-set{gap:26px}
 
   /* ---- market update bar ---- */
@@ -392,7 +392,7 @@
   .lt{position:relative;width:100%;height:100%}
   .lt .bar{position:absolute;inset:0;display:flex;align-items:center;gap:24px;padding:0 34px;overflow:hidden;
            border-radius:22px;background:linear-gradient(158deg,#202020,#0d0d0d);
-           border:1px solid var(--border);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 38px rgba(0,0,0,.6)}
+           border:3px solid var(--border);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 38px rgba(0,0,0,.6)}
   .lt .accent{position:absolute;left:0;top:0;bottom:0;width:9px;background:var(--pill);z-index:3}
   .lt .logo-chip,.lt .icon{position:relative;z-index:2;flex:0 0 auto}
   .lt .icon{color:var(--accent)}
@@ -924,38 +924,10 @@
     var ctxEl = document.getElementById("ctx");
 
     /* ---------- brand visual helpers ---------- */
-    var _texCache = {};
-    /* Faint candlestick-chart texture drawn behind the navy bars, panels and cards.
-       Cached per size/seed/palette so repeated renders cost nothing. */
-    function candleTexture(w,h,seed,palette){
-      var key = w+"x"+h+":"+seed+":"+palette;
-      if(_texCache[key]) return _texCache[key];
-      var c=document.createElement("canvas"); c.width=w; c.height=h;
-      var g=c.getContext("2d");
-      var rnd=(function(s){return function(){s=(s*9301+49297)%233280;return s/233280;};})(seed||7);
-      var cols = palette==="dark"   ? ["rgba(122,170,235,.16)","rgba(220,235,255,.07)"]
-               : palette==="bright" ? ["rgba(165,205,255,.32)","rgba(255,255,255,.13)"]
-               : palette==="warm"   ? ["rgba(255,205,150,.30)","rgba(255,255,255,.12)"]
-               : palette==="red"    ? ["rgba(255,190,190,.20)","rgba(255,255,255,.09)"]
-               : palette==="gold"   ? ["rgba(246,199,51,.13)","rgba(255,255,255,.05)"]
-               :                      ["rgba(140,185,245,.26)","rgba(215,232,255,.10)"];
-      var n=Math.max(14,Math.round(w/40));
-      for(var i=0;i<n;i++){
-        var x=(i+0.5)*(w/n)+ (rnd()-.5)*8;
-        var bw=Math.max(6,w/n*0.42);
-        var bh=h*(0.25+rnd()*0.6);
-        var by=h*rnd()*0.4;
-        var wickTop=by-h*0.12*rnd(), wickBot=by+bh+h*0.12*rnd();
-        g.strokeStyle=cols[i%2]; g.lineWidth=Math.max(1,bw*0.10);
-        g.beginPath(); g.moveTo(x,wickTop); g.lineTo(x,wickBot); g.stroke();
-        g.fillStyle=cols[i%2];
-        g.fillRect(x-bw/2,by,bw,bh);
-      }
-      var url=c.toDataURL("image/png"); _texCache[key]=url; return url;
-    }
+    /* Shared distressed texture used behind every broadcast card and panel. */
     function tex(el,w,h,seed,pal){
       var d=document.createElement("div"); d.className="cs-tex";
-      d.style.backgroundImage="url("+candleTexture(w,h,seed,pal)+")";
+      d.style.backgroundImage='url("images/panel-texture.png")';
       el.appendChild(d); return d;
     }
 
