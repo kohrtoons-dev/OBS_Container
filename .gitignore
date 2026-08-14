@@ -1,0 +1,11 @@
+# Local operator settings may contain market-data API credentials.
+config/settings.js
+
+# Runtime and editor noise.
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
