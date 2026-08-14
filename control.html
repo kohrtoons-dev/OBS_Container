@@ -283,7 +283,11 @@
 
   /* ---- top bar: brand · main sponsor · promo code ---- */
   .tb-brand{flex:0 0 300px;display:flex;align-items:center;justify-content:center}
-  .tb-code{flex:0 0 372px}
+  .tb-offer{display:flex;min-width:0;overflow:visible}
+  .tb-offer .tb-sponsor{position:relative;z-index:2;flex:1 1 auto;min-width:0}
+  .tb-offer .tb-code{position:relative;z-index:2;flex:0 0 372px}
+  .tb-offer-divider{position:relative;z-index:3;flex:0 0 1px;margin:18px 0;
+                    background:linear-gradient(180deg,transparent,rgba(246,199,51,.55),transparent)}
   .tb-sponsor .in{justify-content:center;gap:34px;padding:0 40px}
   .tb-sponsor .slot{display:flex;align-items:center;flex:0 0 auto}
   .tb-sponsor .slot img{max-height:84px;max-width:420px;object-fit:contain;display:block}
@@ -1053,7 +1057,9 @@
           row.appendChild(div("divider"));
         }
 
-        var sc=div("card tb-sponsor"); tex(sc,1200,140,3,"gold");
+        /* Sponsor artwork and promo code share one continuous pill. */
+        var offer=div("card tb-offer"); tex(offer,1620,140,3,"gold");
+        var sc=div("tb-sponsor");
         if(S.content.mainSponsorLabel) sc.appendChild(html('<span class="badge">'+esc(S.content.mainSponsorLabel)+'</span>'));
         var si=div("in");
         var lg=sponsorImg(sp,84,420);
@@ -1061,16 +1067,18 @@
         else if(sp&&sp.name) si.appendChild(html('<div class="nm">'+esc(sp.name)+'</div>'));
         if(S.content.headline) si.appendChild(html('<div class="headline" style="font-size:34px">'+markHi(S.content.headline)+'</div>'));
         if(S.content.tagline) si.appendChild(html('<div class="tagline" style="font-size:28px">'+taglineHi(S.content.tagline)+'</div>'));
-        sc.appendChild(si); row.appendChild(sc);
+        sc.appendChild(si); offer.appendChild(sc);
 
         if(sp&&(sp.code||sp.discount)){
-          var cc=div("card tb-code"); tex(cc,420,140,7,"gold");
+          offer.appendChild(div("tb-offer-divider"));
+          var cc=div("tb-code");
           var ci=div("in");
           ci.appendChild(html('<div class="k">'+esc(S.content.codeLabel||"USE CODE")+'</div>'));
           if(sp.code) ci.appendChild(html('<div class="v">'+esc(sp.code)+'</div>'));
           if(sp.discount) ci.appendChild(html('<div class="s">'+esc(S.content.codeSuffix||"TO GET")+' '+esc(sp.discount)+'</div>'));
-          cc.appendChild(ci); row.appendChild(cc);
+          cc.appendChild(ci); offer.appendChild(cc);
         }
+        row.appendChild(offer);
         c.appendChild(row);
       },
       ticker:function(b,box){
