@@ -2896,7 +2896,7 @@
       c.appendChild(row("Timezone",selectEl("content.clock.timezone",tzList.map(function(t){return{v:t,t:t==="local"?"Local (browser)":(t==="America/New_York"?"Eastern Time (ET)":t)};}))));
       var sw=el("div","row");sw.appendChild(toggle("Show seconds","content.clock.seconds"));c.appendChild(sw);
       var sw2=el("div","row");sw2.appendChild(toggle("Show date","content.clock.showDate"));c.appendChild(sw2);
-      c.appendChild(el("p","mini","The Elements shortcut switches this clock to Eastern Time with seconds. Changes here update that same clock; it always stays attached to the right side of the Market Update Bar."));
+      c.appendChild(el("p","mini","Turning the clock on switches it to Eastern Time with seconds. It stays attached to the right side of the Market Update Bar."));
       // fix boolean value type for format select
       return c;}
 
@@ -2986,7 +2986,7 @@
 
     function boxList(){
       var wrap=el("div");
-      Object.keys(PG.BOX_META).forEach(function(key){
+      Object.keys(PG.BOX_META).filter(function(key){return key!=="ticker"&&key!=="marketbar";}).forEach(function(key){
         wrap.appendChild(boxRow(key));
       });
       return wrap;}
@@ -3170,17 +3170,8 @@
       return box;
     }
 
-    function optionToggleGrid(labelText,pathPrefix,options){
-      var r=el("div","row");r.style.gridColumn="1/-1";
-      r.appendChild(el("label","lbl",labelText));
-      var grid=el("div");grid.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:6px";
-      options.forEach(function(p){grid.appendChild(toggle(p[1],pathPrefix+p[0]));});
-      r.appendChild(grid);return r;
-    }
-
-    /* The quick Elements switch is intentionally opinionated: turning it on
-       recreates the original right-hand clock pill in Eastern Time with seconds.
-       The Market tab remains the advanced editor and uses these exact same paths. */
+    /* Turning this on recreates the original right-hand clock pill in Eastern
+       Time with seconds. The remaining Clock fields are advanced overrides. */
     function easternMarketClockToggle(){
       var w=el("label","sw"), i=el("input"), tr=el("span","track");
       i.type="checkbox";i.checked=!!get("content.clock.show");
@@ -3214,35 +3205,6 @@
       cameraFrame:function(){return [
         wide(row("LIVE pill text (blank = hidden)",textInput("content.liveLabel","LIVE"))),
         noteRow("A rounded rule for your webcam source \u2014 transparent inside. Drag it over your camera in the preview.")
-      ];},
-      ticker:function(){return [
-        row("Theme",selectEl("content.liveData.tickerStyle",[
-          {v:"classic",t:"Classic \u2014 bold broadcast"},{v:"minimal",t:"Minimal \u2014 lighter weights"},
-          {v:"led",t:"LED \u2014 monospace glow"},{v:"glass",t:"Glass \u2014 pill chips"}
-        ])),
-        rangeRow("Rolling speed","content.liveData.tickerSpeed",0,3,0.5,"\u00d7"),
-        row("Direction",selectEl("content.liveData.tickerDir",[
-          {v:"left",t:"\u25c0 Scroll left"},{v:"right",t:"Scroll right \u25b6"}
-        ])),
-        optionToggleGrid("Show per symbol","content.liveData.fields.",[
-          ["price","Price"],["changePct","% change"],["changeAbs","Absolute change"],
-          ["name","Name"],["arrow","Arrow + color"],["highlow","Day high / low"],["volume","Volume"]
-        ]),
-        noteRow("Provider, symbols and refresh settings remain under Market. These controls edit the same ticker settings, so changes stay synchronized between tabs.")
-      ];},
-      marketbar:function(){return [
-        wide(row("Label chip",textInput("content.marketLabel","MARKET UPDATE"))),
-        optionToggleGrid("Include in the status crawl","content.marketBar.",[
-          ["segMovers","Top gainer / loser"],["segBreadth","Advancing vs declining"],
-          ["segSession","US market session"],["segUpdated","Last-updated time"],
-          ["segNews","News headlines"]
-        ]),
-        rangeRow("Rolling speed","content.marketBar.speed",0,3,0.5,"\u00d7"),
-        row("Direction",selectEl("content.marketBar.dir",[
-          {v:"left",t:"\u25c0 Scroll left"},{v:"right",t:"Scroll right \u25b6"}
-        ])),
-        wide(row(null,easternMarketClockToggle())),
-        noteRow("The clock sits inside the status bar at the far right as HH:MM:SS ET, matching the original design. Advanced clock formatting remains under Market \u2192 Clock; both tabs use the same settings.")
       ];},
       affiliate:function(){return [
         wide(row("Sponsor filling the side panel",sponsorSelect("content.sideSponsor"))),
