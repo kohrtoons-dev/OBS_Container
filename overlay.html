@@ -1671,7 +1671,7 @@
        stored/published). Instances share fetched quotes via localStorage +
        BroadcastChannel so N sources don't each burn the rate limit.
        ========================================================= */
-    var LIVE={quotes:{},sig:null,timer:null,lastErr:null,lastTs:0,news:[],newsTs:0};
+    var LIVE={quotes:{},sig:null,timer:null,lastErr:null,lastTs:0,news:[],newsTs:0,note:null,rot:0};
     var QCH=null; try{QCH=new BroadcastChannel("pte_quotes");}catch(e){}
     if(QCH)QCH.onmessage=function(ev){var d=ev.data;if(d&&d.cfgSig===LIVE.sig){LIVE.quotes=d.quotes;LIVE.lastTs=d.ts;applyLiveToTicker();}};
 
@@ -1707,7 +1707,9 @@
       if(sg===LIVE.sig)return;
       LIVE.sig=sg;
       if(LIVE.timer){clearInterval(LIVE.timer);LIVE.timer=null;}
-      LIVE.quotes={};
+      // Keep the prices we already have: getTickerRows() only shows symbols that
+      // are still configured, so nothing stale leaks and the bar never blanks
+      // while the next fetch (or the next rate-limit window) is pending.
       if(!c||!c.enabled||!c.symbols||!c.symbols.length){applyLiveToTicker();return;}
       tickLive(false);
       LIVE.timer=setInterval(function(){tickLive(false);},Math.max(5,c.intervalSec||60)*1000);
@@ -1730,9 +1732,13 @@
       }
       maybeFetchNews(c);
       fetchProvider(c).then(function(q){
-        LIVE.quotes=q;LIVE.lastErr=null;LIVE.lastTs=Date.now();
-        try{localStorage.setItem("pte_quotes_v1",JSON.stringify({cfgSig:LIVE.sig,ts:LIVE.lastTs,quotes:q}));}catch(e){}
-        if(QCH)try{QCH.postMessage({cfgSig:LIVE.sig,ts:LIVE.lastTs,quotes:q});}catch(e){}
+        // Merge, so symbols fetched in an earlier rotation window stay on screen.
+        var merged={},k;
+        for(k in LIVE.quotes)merged[k]=LIVE.quotes[k];
+        for(k in q)merged[k]=q[k];
+        LIVE.quotes=merged;LIVE.lastErr=null;LIVE.lastTs=Date.now();
+        try{localStorage.setItem("pte_quotes_v1",JSON.stringify({cfgSig:LIVE.sig,ts:LIVE.lastTs,quotes:merged}));}catch(e){}
+        if(QCH)try{QCH.postMessage({cfgSig:LIVE.sig,ts:LIVE.lastTs,quotes:merged});}catch(e){}
         applyLiveToTicker();reportLive(null);
       }).catch(function(err){LIVE.lastErr=String(err&&err.message||err);applyLiveToTicker();reportLive(LIVE.lastErr);});
     }
@@ -1770,9 +1776,77 @@
         return {sym:s.label||q.name||s.symbol,name:q.name,price:q.price,changePct:q.changePct,changeAbs:q.changeAbs,high:q.high,low:q.low,volume:q.volume,up:q.up,live:true};}).filter(Boolean);
     }
 
+    /* Per-provider allowance. perMin is calls/minute; perDay caps the slow free
+       tiers whose real constraint is daily (Alpha Vantage: 25/day). */
+    var RATE_LIMITS={polygon:{perMin:5},alphavantage:{perMin:5,perDay:25},twelvedata:{perMin:8,perDay:800},
+                     finnhub:{perMin:60},binance:{perMin:1200},alpaca:{perMin:200}};
+    function rateLim(p){var r=RATE_LIMITS[p];return r?r.perMin:0;}
+    /* Rolling 60s budget kept in localStorage, so the OBS overlay, extra browser
+       sources and the control preview share ONE allowance instead of each
+       spending the full quota and rate-limiting the account. */
+    /* Reserve up to `need` calls and return how many were granted. Always grants
+       at least one when the window is empty, so a watchlist larger than the
+       per-minute allowance still makes progress instead of deadlocking. */
+    function rateTake(provider,need){
+      var lim=rateLim(provider); if(!lim)return need;
+      var K="pte_rate_"+provider, now=Date.now(), hist=[];
+      try{hist=JSON.parse(localStorage.getItem(K))||[];}catch(e){}
+      hist=hist.filter(function(t){return now-t<60000;});
+      var free=Math.max(0,lim-hist.length);
+      var grant=Math.min(need,free);
+      if(grant<=0&&hist.length===0)grant=Math.min(need,Math.max(1,lim));  // never stall
+      for(var i=0;i<grant;i++)hist.push(now);
+      try{localStorage.setItem(K,JSON.stringify(hist));}catch(e){}
+      return grant;
+    }
+    function rateWaitSec(provider){
+      var K="pte_rate_"+provider, now=Date.now(), hist=[];
+      try{hist=JSON.parse(localStorage.getItem(K))||[];}catch(e){}
+      hist=hist.filter(function(t){return now-t<60000;});
+      if(!hist.length)return 1;
+      return Math.max(1,Math.ceil((60000-(now-hist[0]))/1000));
+    }
+    /* Daily budget for tiers metered per day (Alpha Vantage 25, Twelve Data 800). */
+    function dayTake(provider,need){
+      var r=RATE_LIMITS[provider]; if(!r||!r.perDay)return need;
+      var K="pte_day_"+provider, today=new Date().toDateString(), rec=null;
+      try{rec=JSON.parse(localStorage.getItem(K));}catch(e){}
+      if(!rec||rec.d!==today)rec={d:today,n:0};
+      var grant=Math.max(0,Math.min(need,r.perDay-rec.n));
+      rec.n+=grant;
+      try{localStorage.setItem(K,JSON.stringify(rec));}catch(e){}
+      return grant;
+    }
+    function dayLeft(provider){
+      var r=RATE_LIMITS[provider]; if(!r||!r.perDay)return null;
+      var rec=null; try{rec=JSON.parse(localStorage.getItem("pte_day_"+provider));}catch(e){}
+      if(!rec||rec.d!==new Date().toDateString())return r.perDay;
+      return Math.max(0,r.perDay-rec.n);
+    }
     function fetchProvider(c){
       var key=c.apiKey||"",syms=(c.symbols||[]).map(function(s){return s.symbol;}).filter(Boolean);
       if(!syms.length)return Promise.reject(new Error("No symbols configured"));
+      /* Budget: take what this window allows and rotate through the watchlist,
+         so a list longer than the allowance fills in over successive refreshes
+         instead of never fetching at all. Quotes accumulate in LIVE.quotes. */
+      var grant=rateTake(c.provider,syms.length);
+      if(grant<=0){
+        if(LIVE.quotes&&Object.keys(LIVE.quotes).length)return Promise.resolve(LIVE.quotes);
+        return Promise.reject(new Error("Waiting "+rateWaitSec(c.provider)+"s for this plan's next window ("+rateLim(c.provider)+" calls/min)"));
+      }
+      grant=dayTake(c.provider,grant);
+      if(grant<=0){
+        if(LIVE.quotes&&Object.keys(LIVE.quotes).length)return Promise.resolve(LIVE.quotes);
+        return Promise.reject(new Error((PROVIDER_META[c.provider]||{}).name+" daily allowance used up ("+RATE_LIMITS[c.provider].perDay+" calls/day) \u2014 it resets tomorrow. Use fewer symbols or a longer refresh."));
+      }
+      if(grant<syms.length){
+        LIVE.rot=(LIVE.rot||0)%syms.length;
+        var pick=[],n;
+        for(n=0;n<grant;n++)pick.push(syms[(LIVE.rot+n)%syms.length]);
+        LIVE.rot=(LIVE.rot+grant)%syms.length;
+        LIVE.note="Large watchlist for this plan ("+rateLim(c.provider)+" calls/min) \u2014 refreshing "+grant+" of "+syms.length+" symbols each cycle, in rotation";
+        syms=pick;
+      }else if(LIVE.rot){ LIVE.rot=0; }
       switch(c.provider){
         case "finnhub": return fetchFinnhub(syms,key);
         case "twelvedata": return fetchTwelve(syms,key);
@@ -1783,11 +1857,51 @@
         default: return Promise.reject(new Error("Unknown provider"));
       }
     }
-    function jget(url,opts){return fetch(url,opts||{}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});}
+    /* Fetch JSON and, on failure, say exactly WHY — status, the provider's own
+       error text, and the common causes. Silent failures were impossible to
+       diagnose from the overlay. */
+    function jget(url,opts){
+      return fetch(url,opts||{}).then(function(r){
+        if(r.ok)return r.json();
+        return r.text().then(function(t){
+          var m="";
+          try{var j=JSON.parse(t);m=j.message||j.error||j.msg||j.Note||j.Information||j["Error Message"]||"";}
+          catch(e){m=String(t||"").replace(/<[^>]*>/g," ").trim().slice(0,140);}
+          var hint=(r.status===401||r.status===403)?" \u2014 API key rejected"
+                  :(r.status===429)?" \u2014 rate limit reached (raise the refresh interval)"
+                  :(r.status===404)?" \u2014 symbol or endpoint not found"
+                  :(r.status>=500)?" \u2014 provider is down":"";
+          throw new Error("HTTP "+r.status+hint+(m?": "+m:""));
+        },function(){ throw new Error("HTTP "+r.status); });
+      },function(e){
+        // fetch() itself rejected: no network, DNS, or the provider refused the
+        // browser request (no CORS headers). Alpaca and some paid APIs do this.
+        throw new Error("Request blocked \u2014 no internet, or this provider does not allow browser requests (CORS). "+(e&&e.message||""));
+      });
+    }
+    /* Providers that return 200 with a rate-limit / notice body instead of an error. */
+    function softErr(j){
+      if(!j||typeof j!=="object")return null;
+      var m=j.Note||j.Information||j["Error Message"]||null;
+      return m?String(m).slice(0,160):null;
+    }
     function fetchFinnhub(syms,key){
       if(!key)return Promise.reject(new Error("Finnhub needs an API key"));
-      var q={};
-      return Promise.all(syms.map(function(s){return jget("https://finnhub.io/api/v1/quote?symbol="+encodeURIComponent(s)+"&token="+encodeURIComponent(key)).then(function(j){ if(j.c==null)return; q[s.toUpperCase()]={price:j.c,changeAbs:j.d,changePct:j.dp,high:j.h,low:j.l,volume:null,name:null,up:(j.d==null?(j.dp>=0):(j.d>=0))}; }).catch(function(){});})).then(function(){ if(!Object.keys(q).length)throw new Error("No data (check key / symbol format)"); return q; });
+      var q={},e1=null,zero=0;
+      return Promise.all(syms.map(function(s){
+        return jget("https://finnhub.io/api/v1/quote?symbol="+encodeURIComponent(s)+"&token="+encodeURIComponent(key))
+          .then(function(j){
+            if(j.c==null||j.c===0){ zero++; return; }
+            q[s.toUpperCase()]={price:j.c,changeAbs:j.d,changePct:j.dp,high:j.h,low:j.l,volume:null,name:null,up:(j.d==null?(j.dp>=0):(j.d>=0))};
+          })
+          .catch(function(e){ if(!e1)e1=e; });
+      })).then(function(){
+        if(!Object.keys(q).length){
+          if(e1)throw e1;
+          throw new Error(zero?"Finnhub returned no price for those symbols \u2014 check the format (stocks AAPL \u00B7 crypto BINANCE:BTCUSDT \u00B7 forex OANDA:EUR_USD)":"No data from Finnhub");
+        }
+        return q;
+      });
     }
     function fetchTwelve(syms,key){
       if(!key)return Promise.reject(new Error("Twelve Data needs an API key"));
@@ -1798,19 +1912,124 @@
         if(!Object.keys(q).length)throw new Error("No data (check key / symbols)"); return q;
       });
     }
+    /* Binance rejects the WHOLE batch with 400 if a single pair is unknown, and
+       its error responses carry no Access-Control-Allow-Origin (success ones do).
+       The browser therefore cannot read that 400 and fetch() rejects at network
+       level, which made one stray symbol look like "no internet / CORS". Retry
+       one call per symbol so a bad symbol only loses itself and gets named;
+       Binance allows 1200 calls/min, so the fan-out costs nothing. */
     function fetchBinance(syms){
-      var arr=JSON.stringify(syms.map(function(s){return s.toUpperCase();}));
-      return jget("https://api.binance.com/api/v3/ticker/24hr?symbols="+encodeURIComponent(arr)).then(function(j){ if(!Array.isArray(j))throw new Error((j&&j.msg)||"Binance error"); var q={}; j.forEach(function(o){q[o.symbol.toUpperCase()]={price:o.lastPrice,changeAbs:o.priceChange,changePct:o.priceChangePercent,high:o.highPrice,low:o.lowPrice,volume:o.volume,name:o.symbol,up:parseFloat(o.priceChange)>=0};}); return q; });
+      var U="https://api.binance.com/api/v3/ticker/24hr";
+      function row(o){return {price:o.lastPrice,changeAbs:o.priceChange,changePct:o.priceChangePercent,
+                              high:o.highPrice,low:o.lowPrice,volume:o.volume,name:o.symbol,
+                              up:parseFloat(o.priceChange)>=0};}
+      var arr=JSON.stringify(syms.map(function(s){return String(s).toUpperCase();}));
+      return jget(U+"?symbols="+encodeURIComponent(arr)).then(function(j){
+        if(!Array.isArray(j))throw new Error((j&&j.msg)||"Binance rejected those symbols \u2014 pairs look like BTCUSDT");
+        var q={}; j.forEach(function(o){q[o.symbol.toUpperCase()]=row(o);});
+        LIVE.note=null; return q;
+      }).catch(function(){
+        var q={},miss=[];
+        return Promise.all(syms.map(function(s){
+          var u=String(s).toUpperCase();
+          return jget(U+"?symbol="+encodeURIComponent(u))
+            .then(function(o){ if(o&&o.symbol)q[u]=row(o); else miss.push(u); })
+            .catch(function(){ miss.push(u); });
+        })).then(function(){
+          var bad=miss.slice(0,6).join(", ");
+          if(!Object.keys(q).length)throw new Error("Binance returned nothing for "+bad+" \u2014 check the pairs (crypto only, e.g. BTCUSDT) or the connection");
+          LIVE.note=miss.length?("Not a Binance pair: "+bad+" \u2014 Binance lists crypto only"):null;
+          return q;
+        });
+      });
     }
     function fetchAlpha(syms,key){
       if(!key)return Promise.reject(new Error("Alpha Vantage needs an API key"));
-      var q={};
-      return Promise.all(syms.map(function(s){return jget("https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol="+encodeURIComponent(s)+"&apikey="+encodeURIComponent(key)).then(function(j){var o=j["Global Quote"]||{}; if(!o["05. price"])return; q[s.toUpperCase()]={price:o["05. price"],changeAbs:o["09. change"],changePct:parseFloat(o["10. change percent"]),high:o["03. high"],low:o["04. low"],volume:o["06. volume"],name:s,up:parseFloat(o["09. change"])>=0};}).catch(function(){});})).then(function(){ if(!Object.keys(q).length)throw new Error("No data / rate-limited (free = 25/day)"); return q; });
+      var q={},e1=null,note=null;
+      return Promise.all(syms.map(function(s){
+        return jget("https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol="+encodeURIComponent(s)+"&apikey="+encodeURIComponent(key))
+          .then(function(j){
+            var sm=softErr(j); if(sm){ if(!note)note=sm; return; }
+            var o=j["Global Quote"]||{}; if(!o["05. price"])return;
+            q[s.toUpperCase()]={price:o["05. price"],changeAbs:o["09. change"],changePct:parseFloat(o["10. change percent"]),high:o["03. high"],low:o["04. low"],volume:o["06. volume"],name:s,up:parseFloat(o["09. change"])>=0};
+          })
+          .catch(function(e){ if(!e1)e1=e; });
+      })).then(function(){
+        if(!Object.keys(q).length){
+          if(note)throw new Error("Alpha Vantage: "+note);
+          if(e1)throw e1;
+          throw new Error("No data from Alpha Vantage \u2014 the free tier allows 25 calls/day; use few symbols and a long refresh");
+        }
+        return q;
+      });
     }
     function fetchPolygon(syms,key){
       if(!key)return Promise.reject(new Error("Polygon needs an API key"));
-      var q={};
-      return Promise.all(syms.map(function(s){return jget("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/"+encodeURIComponent(s)+"?apiKey="+encodeURIComponent(key)).then(function(j){var t=j.ticker; if(!t)return; var day=t.day||{}; var price=(t.lastTrade&&t.lastTrade.p)||day.c; q[s.toUpperCase()]={price:price,changeAbs:t.todaysChange,changePct:t.todaysChangePerc,high:day.h,low:day.l,volume:day.v,name:t.ticker,up:(t.todaysChange||0)>=0};}).catch(function(){});})).then(function(){ if(!Object.keys(q).length)throw new Error("No data (check key / symbols)"); return q; });
+      /* Polygon's real-time snapshot endpoint is a paid entitlement. Free keys
+         get 403 there but CAN read the previous-session aggregate, so fall back
+         to it per symbol — the ticker then shows the last close and that
+         session's move instead of going dark. */
+      /* Polygon names crypto X:BTCUSD; the Binance provider (and most exchange
+         UIs) name the same pair BTCUSDT. Translate on the way out so a watchlist
+         built for Binance keeps working after switching provider. Quotes stay
+         keyed by the symbol AS CONFIGURED so the ticker still finds them. */
+      function pSym(s){
+        var u=String(s).toUpperCase();
+        if(/^[A-Z]:/.test(u))return u;                            // already X:/C:/I: qualified
+        var m=u.match(/^([A-Z0-9]{2,10})(?:USDT|USDC|BUSD)$/);    // no US ticker ends in these
+        return m?("X:"+m[1]+"USD"):u;
+      }
+      var q={},e1=null,usedPrev=false,miss=[];
+      function prev(s){
+        return jget("https://api.polygon.io/v2/aggs/ticker/"+encodeURIComponent(pSym(s))+"/prev?adjusted=true&apiKey="+encodeURIComponent(key))
+          .then(function(j){
+            /* Polygon answers 200 with resultsCount:0 for a ticker it does not
+               know, so an unknown symbol looks exactly like a dead key unless we
+               record it here. */
+            var r=(j.results||[])[0]; if(!r){miss.push(String(s).toUpperCase());return;}
+            var chg=(r.c!=null&&r.o!=null)?r.c-r.o:null;
+            usedPrev=true;
+            q[String(s).toUpperCase()]={price:r.c,changeAbs:chg,changePct:(chg!=null&&r.o)?chg/r.o*100:null,
+                                high:r.h,low:r.l,volume:r.v,name:String(s).toUpperCase(),up:(chg||0)>=0};
+          });
+      }
+      // Remember that this key has no snapshot entitlement, otherwise every
+      // refresh spends two calls per symbol and a free key (5/min) rate-limits.
+      var FREEK="pte_poly_free_v1";
+      var isFree=false; try{ isFree=localStorage.getItem(FREEK)===key; }catch(e){}
+      function markFree(){ try{ localStorage.setItem(FREEK,key); }catch(e){} }
+      function one(s){
+        if(isFree) return prev(s).catch(function(e){ if(!e1)e1=e; });
+        return jget("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/"+encodeURIComponent(pSym(s))+"?apiKey="+encodeURIComponent(key))
+          .then(function(j){
+            var t=j.ticker; if(!t)return prev(s); var day=t.day||{};
+            var price=(t.lastTrade&&t.lastTrade.p)||day.c;
+            if(price==null)return prev(s);
+            q[String(s).toUpperCase()]={price:price,changeAbs:t.todaysChange,changePct:t.todaysChangePerc,high:day.h,low:day.l,volume:day.v,name:String(s).toUpperCase(),up:(t.todaysChange||0)>=0};
+          })
+          .catch(function(e){
+            if(/40[13]|not entitled|upgrade/i.test(String(e&&e.message||e))){ markFree(); return prev(s).catch(function(e2){ if(!e1)e1=e2; }); }
+            if(!e1)e1=e;
+          });
+      }
+      /* Probe the paid snapshot with ONE symbol before fanning out. A free key
+         403s there and falls back to /prev, so probing every symbol in parallel
+         cost 2 calls each and blew the whole 5 calls/min free budget on the
+         first refresh. Probe, then the rest: N+1 calls worst case. */
+      return one(syms[0]).then(function(){
+        return Promise.all(syms.slice(1).map(one));
+      }).then(function(){
+        if(!Object.keys(q).length){
+          if(miss.length)throw new Error("Polygon has no data for "+miss.slice(0,6).join(", ")+" \u2014 US stocks use plain tickers (NVDA); crypto is BTCUSDT or X:BTCUSD");
+          if(e1)throw e1;
+          throw new Error("No data from Polygon (check key / symbols)");
+        }
+        var notes=[];
+        if(miss.length)notes.push("Polygon has no data for "+miss.slice(0,6).join(", "));
+        if(usedPrev)notes.push("Polygon free plan \u2014 showing the previous close (real-time needs a paid plan)");
+        LIVE.note=notes.length?notes.join(" \u00b7 "):null;
+        return q;
+      });
     }
     function fetchAlpaca(syms,key,secret){
       if(!key||!secret)return Promise.reject(new Error("Alpaca needs Key ID + Secret"));
@@ -1831,7 +2050,43 @@
 
     // background-edit target select from control
     window.addEventListener("message",function(ev){
-      if((ev.data||{}).type==="selectBox"){ selectBox(ev.data.key); }
+      var d=ev.data||{};
+      if(d.type==="selectBox"){ selectBox(d.key); return; }
+      /* Provider self-test: same code path as production, detailed reply. */
+      if(d.type==="liveTest"){
+        var c=liveCfg()||{}, t0=Date.now();
+        function reply(o){ try{parent.postMessage({type:"liveTestResult",r:o},"*");}catch(e){} }
+        if(!c.enabled)return reply({ok:false,msg:"Live market data is switched off \u2014 tick \u201CEnable live market data\u201D above"});
+        var syms=(c.symbols||[]).map(function(s){return s.symbol;}).filter(Boolean);
+        if(!syms.length)return reply({ok:false,msg:"No symbols configured \u2014 add some below"});
+        var P=(PROVIDER_META&&PROVIDER_META[c.provider])||{};
+        if(P.needsKey&&!c.apiKey)return reply({ok:false,msg:(P.name||c.provider)+" needs an API key"});
+        // Don't report a cache hit as a live round trip — say the window is closed.
+        var lim=rateLim(c.provider);
+        if(lim){
+          var hist=[]; try{hist=JSON.parse(localStorage.getItem("pte_rate_"+c.provider))||[];}catch(e){}
+          hist=hist.filter(function(t){return Date.now()-t<60000;});
+          if(hist.length>0&&hist.length>=lim)
+            return reply({ok:false,msg:"Waiting "+rateWaitSec(c.provider)+"s for this plan's next window ("+lim+" calls/min)"});
+        }
+        fetchProvider(c).then(function(q){
+          // A test costs real calls, so keep what it fetched: merge and repaint
+          // instead of throwing the data away.
+          var merged={},k;
+          for(k in LIVE.quotes)merged[k]=LIVE.quotes[k];
+          for(k in q)merged[k]=q[k];
+          LIVE.quotes=merged;LIVE.lastErr=null;LIVE.lastTs=Date.now();
+          try{localStorage.setItem("pte_quotes_v1",JSON.stringify({cfgSig:LIVE.sig,ts:LIVE.lastTs,quotes:merged}));}catch(e){}
+          if(QCH)try{QCH.postMessage({cfgSig:LIVE.sig,ts:LIVE.lastTs,quotes:merged});}catch(e){}
+          applyLiveToTicker();
+          var have=Object.keys(merged);
+          var missing=syms.filter(function(s){return have.indexOf(String(s).toUpperCase())<0;});
+          reply({ok:true,ms:Date.now()-t0,got:have.length,total:syms.length,missing:missing,
+                 note:LIVE.note||null,rotating:/rotation/.test(String(LIVE.note||"")),
+                 first:have.length?(merged[have[0]].name||have[0])+" @ "+merged[have[0]].price:""});
+        }).catch(function(e){ reply({ok:false,ms:Date.now()-t0,msg:String(e&&e.message||e)}); });
+        return;
+      }
     });
 
   })();
