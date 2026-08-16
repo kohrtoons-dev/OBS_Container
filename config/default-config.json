@@ -1,18 +1,19 @@
 {
   "version": 2,
   "themeVersion": 4,
+  "fontVersion": 1,
   "canvas": { "resolution": "1080" },
   "grid": { "show": false, "size": 40, "snap": false },
   "theme": {
     "primary": "#0e0e0e",
     "accent": "#f8c200",
     "text": "#ffffff",
-    "border": "rgba(246,199,51,.30)",
+    "border": "#f8c200",
     "borderStyle": "solid",
     "borderWidth": 0,
     "roundness": 6,
-    "headingFont": "'Montserrat', 'Helvetica Neue', Arial, sans-serif",
-    "bodyFont": "'Montserrat', 'Helvetica Neue', Arial, sans-serif"
+    "headingFont": "'League Spartan', 'Arial Black', Arial, sans-serif",
+    "bodyFont": "'Poppins', 'Helvetica Neue', Arial, sans-serif"
   },
   "content": {
     "promoTemplate": "USE CODE {code} TO GET {discount} WITH OUR SPONSOR",
