@@ -87,19 +87,19 @@
   .brandlogo{display:block;object-fit:contain}
 
   .cardwrap{position:absolute;inset:0;display:flex;gap:16px}
-  .cardwrap.badged{padding-top:25px}
+  .cardwrap.badged{padding-top:18px}
   .card{position:relative;flex:1;min-width:0;height:100%;border-radius:22px;overflow:visible;
         background:linear-gradient(158deg,#202020 0%,#141414 46%,#0d0d0d 100%);
-        border:2.1px solid var(--border);
+        border:1.1px solid var(--border);
         box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 12px 34px rgba(0,0,0,.55)}
   .card.plain{background:transparent;border:0;box-shadow:none;overflow:visible}
   /* Stock ticker: square against the content above, rounded only at the bottom. */
   .card.flat{background:#050505;border:0;border-radius:0 0 22px 22px}
   .card .in{position:relative;z-index:2;height:100%;display:flex;align-items:center}
-  .badge{position:absolute;top:-23px;left:50%;transform:translateX(-50%);z-index:6;
+  .badge{position:absolute;top:-16px;left:50%;transform:translateX(-50%);z-index:6;
          background:var(--pill);color:#100d02;font-family:var(--hfont);font-weight:800;
-         font-size:20px;letter-spacing:.11em;text-transform:uppercase;white-space:nowrap;
-         padding:9px 26px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+         font-size:14px;letter-spacing:.11em;text-transform:uppercase;white-space:nowrap;
+         padding:6px 18px;border-radius:999px;box-shadow:0 4px 13px rgba(0,0,0,.5)}
   .badge.right{left:auto;right:26px;transform:none}
   .divider{flex:0 0 1px;height:64%;align-self:center;background:var(--accent)}
 
@@ -130,7 +130,7 @@
   .clk .d{display:block;font-size:.5em;font-weight:600;color:var(--steel);letter-spacing:.12em}
 
   /* ---- content + camera frames ---- */
-  .frame{position:absolute;inset:0;border:2.1px solid var(--border);border-radius:22px;pointer-events:none;
+  .frame{position:absolute;inset:0;border:1.1px solid var(--border);border-radius:22px;pointer-events:none;
          box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 12px 34px rgba(0,0,0,.5)}
   .frame.glow{box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 60px rgba(246,199,51,.05),0 12px 34px rgba(0,0,0,.5)}
   .livepill{position:absolute;top:20px;right:20px;z-index:6;display:flex;align-items:center;gap:9px;
@@ -159,7 +159,7 @@
   .box[data-tstyle="led"] .tick,.box[data-tstyle="led"] .tick .sym,.box[data-tstyle="led"] .tick .px,.box[data-tstyle="led"] .tick .ch{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace}
   .box[data-tstyle="led"] .tick .sym{letter-spacing:.08em}
   .box[data-tstyle="led"] .tick .px,.box[data-tstyle="led"] .tick .ch{text-shadow:0 0 10px currentColor}
-  .box[data-tstyle="glass"] .tick{background:rgba(255,255,255,.06);border:2.1px solid var(--border);border-radius:999px;padding:9px 22px}
+  .box[data-tstyle="glass"] .tick{background:rgba(255,255,255,.06);border:1.1px solid var(--border);border-radius:999px;padding:9px 22px}
   .box[data-tstyle="glass"] .tick-set{gap:26px}
 
   /* ---- market update bar ---- */
@@ -202,7 +202,7 @@
   .chat-hd .ic svg{width:15px;height:15px}
   .chat-hd b{font-family:var(--hfont);font-weight:800;letter-spacing:.07em;font-size:18px;color:var(--accent);
              text-transform:uppercase}
-  .chat-body{flex:1;position:relative;min-height:0;background:transparent}
+  .chat-body{flex:1;position:relative;min-height:0;margin:0 15px;background:transparent}
   .chat-body iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent}
   .chat-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
               gap:9px;text-align:center;padding:20px;color:#9a9a9a;font-family:var(--bfont);font-size:16px}
@@ -216,7 +216,7 @@
   .lt{position:relative;width:100%;height:100%}
   .lt .bar{position:absolute;inset:0;display:flex;align-items:center;gap:24px;padding:0 34px;overflow:hidden;
            border-radius:22px;background:linear-gradient(158deg,#202020,#0d0d0d);
-           border:2.1px solid var(--border);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 38px rgba(0,0,0,.6)}
+           border:1.1px solid var(--border);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 38px rgba(0,0,0,.6)}
   .lt .accent{position:absolute;left:0;top:0;bottom:0;width:9px;background:var(--pill);z-index:3}
   .lt .logo-chip,.lt .icon{position:relative;z-index:2;flex:0 0 auto}
   .lt .icon{color:var(--accent)}
@@ -994,7 +994,28 @@
         var body=div("chat-body");
         if(S.content.chatUrl){
           var f=document.createElement("iframe");
-          f.src=S.content.chatUrl; f.setAttribute("allowtransparency","true");
+          var chatSrc=String(S.content.chatUrl);
+          if(/socialstream\.ninja/i.test(chatSrc)){
+            var chatFixCss="/*pte-chat-fix*/html,body{height:100%!important;overflow:hidden!important}html,body,#main,main,.output-container,#output,#output>*{mask:none!important;-webkit-mask:none!important;mask-image:none!important;-webkit-mask-image:none!important;filter:none!important}#output,#output.alignbottom{height:100vh!important;max-height:100vh!important;margin-bottom:0!important;padding-bottom:0!important;overflow-y:hidden!important}#output>*,#output .highlight-chat,#output .fadeout,#output .fadein,#output .dissolve{opacity:1!important;filter:none!important;mask:none!important;-webkit-mask:none!important;mask-image:none!important;-webkit-mask-image:none!important;animation:none!important;transition:none!important}html:before,html:after,body:before,body:after,.output-container:before,.output-container:after,#output:before,#output:after{content:none!important;display:none!important;background:none!important;mask:none!important;-webkit-mask:none!important}#menu{display:none!important;height:0!important;margin:0!important;padding:0!important}";
+            try{
+              var chatUrl=new URL(chatSrc), cssKeys=["base64css","b64css","cssbase64","cssb64"], cssKey="", ki;
+              Array.from(chatUrl.searchParams.keys()).forEach(function(k){
+                if(/^(fadedtop|fadeout|fadein|dissolve|opacity|animateout|animatein|smooth|manualscroll)$/i.test(k)) chatUrl.searchParams.delete(k);
+              });
+              chatUrl.searchParams.set("alignbottom","");
+              chatUrl.searchParams.set("limit","10000");
+              for(ki=0;ki<cssKeys.length;ki++) if(chatUrl.searchParams.has(cssKeys[ki])){cssKey=cssKeys[ki];break;}
+              if(cssKey){
+                try{
+                  var oldCss=atob(String(chatUrl.searchParams.get(cssKey)||"").replace(/ /g,"+"));
+                  oldCss+=chatFixCss;
+                  chatUrl.searchParams.set(cssKey,btoa(oldCss));
+                }catch(e){chatUrl.searchParams.set(cssKey,btoa(chatFixCss));}
+              }else chatUrl.searchParams.set("b64css",btoa(chatFixCss));
+              chatSrc=chatUrl.toString();
+            }catch(e){}
+          }
+          f.src=chatSrc; f.setAttribute("allowtransparency","true");
           body.appendChild(f); box.classList.add("locked-iframe");
         }else{
           body.appendChild(html('<div class="chat-empty"><div class="ic">\uD83D\uDCAC</div><div>Paste a SocialStream.ninja<br>featured URL on the control page</div><small>chat url is empty</small></div>'));
@@ -1134,7 +1155,7 @@
       // editor handles — reads --pill, so one Accent drives the whole theme.
       r.setProperty("--pill",t.accent);
       r.setProperty("--primary",t.primary); r.setProperty("--border",t.accent||"#f8c200");
-      r.setProperty("--bw",(t.borderWidth||0)+"px"); r.setProperty("--bs",t.borderStyle||"solid");
+      r.setProperty("--bw",Math.max(0,(t.borderWidth||0)-1)+"px"); r.setProperty("--bs",t.borderStyle||"solid");
       r.setProperty("--round",(t.roundness||0)+"px");
       r.setProperty("--hfont",t.headingFont); r.setProperty("--bfont",t.bodyFont);
     }
